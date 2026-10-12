@@ -12,6 +12,7 @@ Original file is located at
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+from numpy.lib.stride_tricks import as_strided
 
 class Preprocessor:
     """
@@ -36,10 +37,11 @@ class Preprocessor:
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Input must be a pandas DataFrame.")
 
+        if not df.isnull().values.any():
+            return df
+
         df_clean = df.copy()
-        # Linear interpolation is suitable for time series data
         df_clean = df_clean.interpolate(method='linear', limit_direction='both')
-        # Fill any remaining NaNs (e.g., at the start/end)
         df_clean = df_clean.ffill().bfill()
         return df_clean
 
@@ -47,8 +49,9 @@ class Preprocessor:
         """
         Fits the scaler to the data and returns normalized data.
         """
+        transformed_data = self.scaler.fit_transform(data)
         self.is_fitted = True
-        return self.scaler.fit_transform(data)
+        return transformed_data
 
     def transform(self, data):
         """
@@ -77,20 +80,25 @@ class Preprocessor:
         Returns:
             np.array: 3D array of shape (num_sequences, time_steps, features).
         """
-        xs = []
         if isinstance(data, pd.DataFrame):
             data = data.values
+            
+        data = np.ascontiguousarray(data)
+        n_samples, n_features = data.shape
 
-        for i in range(len(data) - time_steps + 1):
-            xs.append(data[i:(i + time_steps)])
+        if n_samples < time_steps:
+            return np.empty((0, time_steps, n_features))
 
-        return np.array(xs)
+        n_sequences = n_samples - time_steps + 1
+        shape = (n_sequences, time_steps, n_features)
+        strides = (data.strides[0], data.strides[0], data.strides[1])
+
+        return as_strided(data, shape=shape, strides=strides)
 
 if __name__ == "__main__":
-    # Quick test of the pipeline
-    dates = pd.date_range(start='2026-01-01', periods=100, freq='h')
+    dates = pd.date_range(start='2023-01-01', periods=100, freq='H')
     values = np.random.rand(100, 1) * 100
-    values[10:15] = np.nan # Simulate missing data
+    values[10:15] = np.nan 
 
     df = pd.DataFrame(values, columns=['energy'], index=dates)
 
@@ -121,28 +129,12 @@ class LSTMAutoencoder:
 
     def _build_model(self):
         model = Sequential(name="LSTM_Autoencoder")
-
-        # Encoder
-        # Input shape: (samples, time_steps, features)
         model.add(Input(shape=(self.time_steps, self.n_features)))
-
-        # LSTM Layer 1: Encodes temporal features, returns sequences
         model.add(LSTM(128, activation='relu', return_sequences=True, name="Encoder_LSTM_1"))
-
-        # LSTM Layer 2: Further compression, returns last state (latent vector)
         model.add(LSTM(64, activation='relu', return_sequences=False, name="Encoder_LSTM_2"))
-
-        # RepeatVector: Prepares the latent vector for the decoder by repeating it for each timestep
         model.add(RepeatVector(self.time_steps, name="Repeat_Vector"))
-
-        # Decoder
-        # LSTM Layer 1: Reconstructs temporal sequence
         model.add(LSTM(64, activation='relu', return_sequences=True, name="Decoder_LSTM_1"))
-
-        # LSTM Layer 2: Further refinement
         model.add(LSTM(128, activation='relu', return_sequences=True, name="Decoder_LSTM_2"))
-
-        # Output Layer: Reconstructs the value for each timestep
         model.add(TimeDistributed(Dense(self.n_features), name="Output_Layer"))
 
         model.compile(optimizer='adam', loss='mse')
@@ -172,10 +164,7 @@ class LSTMAutoencoder:
         self.model.save(filepath)
 
 if __name__ == "__main__":
-    # Quick test to verify architecture
     import numpy as np
-
-    # Parameters matching the plan
     TIME_STEPS = 24
     N_FEATURES = 1 # Lighting
 
@@ -206,33 +195,11 @@ class LSTMAutoencoder:
 
     def _build_model(self):
         model = Sequential(name="LSTM_Autoencoder")
-
-        # Encoder
-        # Input shape: (samples, time_steps, features)
-        #model.add(Input(shape=(self.time_steps, self.n_features)))
-
-        # LSTM Layer 1: Encodes temporal features, returns sequences
-        #model.add(LSTM(128, activation='relu', return_sequences=True, name="Encoder_LSTM_1"))
-        model.add(LSTM(32, input_shape=(self.time_steps, self.n_features), name="Encoder_LSTM_1"))
-
-        # LSTM Layer 2: Further compression, returns last state (latent vector)
-        #model.add(LSTM(64, activation='relu', return_sequences=False, name="Encoder_LSTM_2"))
+        model.add(LSTM(128, input_shape=(self.time_steps, self.n_features), name="Encoder_LSTM_1"))
         model.add(Dropout(rate=0.2))
-
-        # RepeatVector: Prepares the latent vector for the decoder by repeating it for each timestep
         model.add(RepeatVector(self.time_steps, name="Repeat_Vector"))
-
-        # Decoder
-        # LSTM Layer 1: Reconstructs temporal sequence
-        #model.add(LSTM(64, activation='relu', return_sequences=True, name="Decoder_LSTM_1"))
-
-        # LSTM Layer 2: Further refinement
-        #model.add(LSTM(128, activation='relu', return_sequences=True, name="Decoder_LSTM_2"))
-        model.add(LSTM(32, return_sequences=True, name="Decoder_LSTM_2"))
-
+        model.add(LSTM(128, return_sequences=True, name="Decoder_LSTM_1"))
         model.add(Dropout(rate=0.2))
-
-        # Output Layer: Reconstructs the value for each timestep
         model.add(TimeDistributed(Dense(self.n_features), name="Output_Layer"))
 
         model.compile(optimizer='adam', loss='mse')
@@ -258,7 +225,6 @@ class LSTMAutoencoder:
         self.model.save(filepath)
 
 if __name__ == "__main__":
-    #testing  to verify model
     import numpy as np
 
     TIME_STEPS = 24
@@ -291,19 +257,14 @@ def train_model():
     if not os.path.exists(DATA_PATH):
         print(f"Error: {DATA_PATH} not found. Please run generate_dataset.py first.")
         return
-
-
-    # 1. Initialize Preprocessor
     print("Initializing preprocessor...")
     preprocessor = Preprocessor()
 
-    # 2. Load and Clean Data
     print("Loading data...")
     df = preprocessor.load_data(DATA_PATH)
     print("First 5 rows of loaded data:")
     print(df.head())
 
-    # Select only the relevant columns to avoid issues with 'Unnamed' NaN columns
     feature_cols = ['lighting_watts'] #features
     df = df[feature_cols]
     print("Data after selecting features:")
@@ -311,38 +272,22 @@ def train_model():
 
     df_clean = preprocessor.clean_data(df)
 
-    # 3. Scale Data
     print("Scaling data...")
-    # Fit on the whole dataset assuming it represents 'normal' behavior
     scaled_data = preprocessor.fit_transform(df_clean)
-
-    # Save the scaler for future inference
     joblib.dump(preprocessor.scaler, SCALER_PATH)
     print(f"Scaler saved to {SCALER_PATH}")
 
-    # 4. Create Sequences
     print(f"Creating sequences with time_steps={TIME_STEPS}...")
     sequences = preprocessor.create_sequences(scaled_data, TIME_STEPS)
     print(f"Data shape: {sequences.shape}")
-
-    # 5. Build Model
     model = LSTMAutoencoder(TIME_STEPS, N_FEATURES)
     model.summary()
-
-    # 6. Train Model
     print("Starting training...")
-    # We use a portion of the data for validation within the train method
-    history = model.train(sequences, epochs=10, batch_size=32, validation_split=0.1)
-
-    # Save training history
+    history = model.train(sequences, epochs=30, batch_size=32, validation_split=0.1)
     joblib.dump(history.history, HISTORY_PATH)
     print(f"Training history saved to {HISTORY_PATH}")
-
-    # 7. Save Model
     model.save(MODEL_PATH)
     print(f"Model saved to {MODEL_PATH}")
-
-    # 8. Plot Training History
     plt.figure(figsize=(10, 6))
     plt.plot(history.history['loss'], label='Training Loss')
     plt.plot(history.history['val_loss'], label='Validation Loss')
@@ -353,9 +298,6 @@ def train_model():
     plt.grid(True)
     plt.savefig(PLOT_PATH)
     print(f"Training loss plot saved to {PLOT_PATH}")
-
-
-     # 9. Plot Training Data
     print("Plotting daily average of training data...")
     df_daily_avg = df_clean.resample('D').mean()
 
@@ -388,7 +330,6 @@ from sklearn.metrics import precision_recall_curve, classification_report, confu
 from keras.losses import MeanSquaredError
 import os
 
-# Constants
 MODEL_PATH = 'lstm_autoencoder.h5'
 SCALER_PATH = 'scaler.pkl'
 TEST_DATA_PATH = 'test_energy_data1.csv'
@@ -405,7 +346,6 @@ def get_labeled_test_data():
     if not os.path.exists(TEST_DATA_PATH):
         raise FileNotFoundError(f"{TEST_DATA_PATH} not found.")
 
-    # Modified: Added parse_dates=True and index_col=0, and on_bad_lines='skip' with engine='python'
     df = pd.read_csv(TEST_DATA_PATH, parse_dates=True, index_col=0, on_bad_lines='skip', engine='python')
     df = df[['lighting_watts']]
 
@@ -414,11 +354,8 @@ def get_labeled_test_data():
         raise ValueError(f"Test data is too short ({n_samples} rows). Please provide a CSV with at least 150 rows to support anomaly injection.")
     labels = np.zeros(n_samples, dtype=int)
 
-    # --- Inject Anomalies ---
-    # We modify the dataframe directly to create ground truth anomalies
-
+    # Inject Anomalies
     # 1. Point Anomalies (Spikes)
-    # AC Spike > Max
     spike_indices = [30, 80, 140]
     for idx in spike_indices:
         if idx < n_samples:
@@ -429,8 +366,6 @@ def get_labeled_test_data():
 
 def evaluate_model():
     print("--- Starting Evaluation ---")
-
-    # 1. Load Resources
     try:
         model = tf.keras.models.load_model(MODEL_PATH,
                                            custom_objects={ "mse": MeanSquaredError() })
@@ -439,7 +374,6 @@ def evaluate_model():
         print(f"Error loading model/scaler: {e}")
         return
 
-    # 2. Prepare Data
     df, raw_labels = get_labeled_test_data()
 
     prep = Preprocessor()
@@ -449,7 +383,6 @@ def evaluate_model():
     scaled_data = prep.transform(df)
     X_test = prep.create_sequences(scaled_data, TIME_STEPS)
 
-    # Align labels: The label for a sequence is the label of the last timestep
     y_true = []
     for i in range(len(df) - TIME_STEPS + 1):
         y_true.append(raw_labels[i + TIME_STEPS - 1])
@@ -458,26 +391,20 @@ def evaluate_model():
     print(f"Test Data Shape: {X_test.shape}")
     print(f"Anomaly Count: {np.sum(y_true)} / {len(y_true)}")
 
-    # 3. Inference
     print("Running inference...")
     X_pred = model.predict(X_test, verbose=0)
 
-    # 4. Calculate Deviation Scores (Reconstruction Error %)
     original_last = X_test[:, -1, :]
     recon_last = X_pred[:, -1, :]
 
     orig_rescaled = prep.inverse_transform(original_last)
     recon_rescaled = prep.inverse_transform(recon_last)
 
-    # Avoid div by zero
     baseline = np.maximum(recon_rescaled, 1.0)
     diff = np.abs(orig_rescaled - recon_rescaled)
     deviation_ratio = diff / baseline
-
-    # Max deviation across features is our anomaly score
     anomaly_scores = np.max(deviation_ratio, axis=1)
 
-    # 5. Evaluate Fixed Threshold (50% Critical)
     THRESHOLD = 0.50
     y_pred = (anomaly_scores > THRESHOLD).astype(int)
 
@@ -501,7 +428,6 @@ from keras.losses import MeanSquaredError
 import os
 from matplotlib.dates import DateFormatter
 
-# Constants
 MODEL_PATH = 'lstm_autoencoder.h5'
 SCALER_PATH = 'scaler.pkl'
 TEST_DATA_PATH = 'test_energy_data1.csv'
@@ -510,7 +436,6 @@ TIME_STEPS = 24
 def run_inference():
     print("--- Starting Inference Pipeline ---")
 
-    # 1. Load Resources
     print("Loading model and scaler...")
     try:
         model = tf.keras.models.load_model(MODEL_PATH,
@@ -521,57 +446,37 @@ def run_inference():
         print(f"Error loading files: {e}. Make sure to run train.py first.")
         return
 
-    # 2. Prepare Test Data
     print(f"Loading test data from {TEST_DATA_PATH}...")
     if not os.path.exists(TEST_DATA_PATH):
         print(f"Error: {TEST_DATA_PATH} not found. Please ensure the file is in the directory.")
         return
 
     df_test = pd.read_csv(TEST_DATA_PATH)
-
-    # Parse datetime and set index
     df_test['datetime'] = pd.to_datetime(df_test['datetime'])
     df_test.set_index('datetime', inplace=True)
 
-    # Select relevant columns
     df_test = df_test[['lighting_watts']]
+    df_test = df_test.head(168)
 
-    # Use only n samples
-    df_test = df_test.head(168) #samples based in hours
-
-    # Initialize preprocessor with loaded scaler
     prep = Preprocessor()
     prep.scaler = scaler
     prep.is_fitted = True
-
-    # Transform and Sequence
     scaled_test = prep.transform(df_test)
     X_test = prep.create_sequences(scaled_test, time_steps=TIME_STEPS)
     print(f"Test sequences shape: {X_test.shape}")
 
-    # 3. Predict (Reconstruct)
     print("Running model inference...")
     X_pred = model.predict(X_test, verbose=0)
-
-    # 4. Calculate Error & Detect Anomalies
-    # We look at the last time step of each sequence for immediate detection
     original_last_step = X_test[:, -1, :]
     reconstructed_last_step = X_pred[:, -1, :]
 
-    # Inverse transform to get Watts
     original_rescaled = prep.inverse_transform(original_last_step)
     reconstructed_rescaled = prep.inverse_transform(reconstructed_last_step)
 
-    # Calculate Absolute Error
-    mae_loss = np.mean(np.abs(X_pred - X_test), axis=(1, 2)) # Aggregate loss for plotting
-
-    # Percentage Deviation Logic (15% Warning, 20% Critical)
-    # Avoid division by zero by adding a small epsilon or using maximum
+    mae_loss = np.mean(np.abs(X_pred - X_test), axis=(1, 2))
     baseline = np.maximum(reconstructed_rescaled, 1.0)
     diff = np.abs(original_rescaled - reconstructed_rescaled)
     deviation_ratio = diff / baseline
-
-    # Max deviation across any feature for the timestamp
     max_deviation = np.max(deviation_ratio, axis=1)
 
     warnings = (max_deviation > 0.15) & (max_deviation <= 0.35)
@@ -582,13 +487,7 @@ def run_inference():
     print(f"Warnings (35-50% deviation): {np.sum(warnings)}")
     print(f"Critical Anomalies (>50% deviation): {np.sum(criticals)}")
 
-    # 5. Visualization
-    #plt.figure(figsize=(12, 6))
-    #plt.plot(mae_loss, label='Reconstruction Error (MAE)', color='blue', alpha=0.6)
     fig, ax1 = plt.subplots(figsize=(14, 7))
-
-    #-------------
-    # Plot Original Data on Primary Y-Axis
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
     for i, col in enumerate(df_test.columns):
         ax1.plot(df_test.index, df_test[col], label=col.replace('_', ' ').title(), color=colors[i], alpha=0.5, linewidth=1)
@@ -596,21 +495,15 @@ def run_inference():
     ax1.set_xlabel('Timestamp')
     ax1.set_ylabel('Energy Consumption (Watts)')
 
-    # Format x-axis
     date_form = DateFormatter("%m-%d %H:%M")
     ax1.xaxis.set_major_formatter(date_form)
     ax1.tick_params(axis='x', rotation=45)
-
-    # Plot Reconstruction Error on Secondary Y-Axis
     ax2 = ax1.twinx()
     error_dates = df_test.index[TIME_STEPS-1:]
     ax2.plot(error_dates, mae_loss, label='Reconstruction Error (MAE)', color='black', alpha=0.7, linewidth=1.5)
     ax2.set_ylabel('Reconstruction Error (Scaled)')
-    #----------
 
-    # Highlight Critical Anomalies
     critical_indices = np.where(criticals)[0]
-    #plt.scatter(critical_indices, mae_loss[critical_indices], color='red', label='Critical Anomaly', zorder=5)
     if len(critical_indices) > 0:
         ax2.scatter(error_dates[critical_indices], mae_loss[critical_indices], color='red', label='Critical Anomaly', zorder=5, s=50)
     """
@@ -619,7 +512,6 @@ def run_inference():
     plt.ylabel('Reconstruction Error (Scaled)')
     plt.legend()
     """
-    # Combined Legend
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
