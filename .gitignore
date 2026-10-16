@@ -1,0 +1,36 @@
+# pycache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# model checkpoints
+*.h5
+*.keras
+*.pkl
+*.pickle
+*.joblib
+checkpoints/
+
+# output images
+*.png
+*.jpg
+*.jpeg
+*.svg
+
+# db
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+
+.vscode/
+.idea/
+
+Thumbs.db
+desktop.ini
+.DS_Store
