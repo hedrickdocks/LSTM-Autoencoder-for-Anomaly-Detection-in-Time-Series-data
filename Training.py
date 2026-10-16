@@ -1,11 +1,16 @@
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import joblib
 import os
+import joblib
+import numpy as np
+import pandas as pd
+
+try:
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 from Preprocessor import MODEL_FEATURE_COLUMNS, Preprocessor
-from Model_v2 import LSTMAutoencoder
+from Model_v3 import LSTMAutoencoder
 
 def train_model():
     DATA_PATH = os.getenv('TRAIN_DATA_PATH', 'generated_energy_data.csv')
@@ -19,7 +24,7 @@ def train_model():
     N_FEATURES = len(MODEL_FEATURE_COLUMNS)
 
     if not os.path.exists(DATA_PATH):
-        print(f"Error: {DATA_PATH} not found. Please run generate_dataset.py first.")
+        print(f"Error: {DATA_PATH} not found.")
         return
 
     print("Initializing preprocessor...")
@@ -27,14 +32,8 @@ def train_model():
 
     print("Loading data...")
     df = preprocessor.load_data(DATA_PATH)
-    print("First 5 rows of loaded data:")
-    print(df.head())
-
     df = preprocessor.add_cyclical_time_features(df)
     df = df[MODEL_FEATURE_COLUMNS]
-    print("Data after selecting features:")
-    print(df.head())
-
     df_clean = preprocessor.clean_data(df)
 
     print("Scaling data...")
@@ -55,11 +54,11 @@ def train_model():
     model.summary()
 
     print("Starting training...")
-    N_FEATURES = len(MODEL_FEATURE_COLUMNS)
     history = model.train(sequences, epochs=30, batch_size=32, validation_split=0.1)
 
     joblib.dump(history.history, HISTORY_PATH)
     print(f"Training history saved to {HISTORY_PATH}")
+
     model.save(MODEL_PATH)
     print(f"Model saved to {MODEL_PATH}")
 
@@ -75,33 +74,32 @@ def train_model():
     joblib.dump(thresholds, THRESHOLDS_PATH)
     print(f"Anomaly thresholds saved to {THRESHOLDS_PATH}: Point={thresholds['point_threshold']:.5f}, Collective={thresholds['collective_threshold']:.5f}")
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(history.history['loss'], label='Training Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.title('Model Loss during Training')
-    df = preprocessor.add_cyclical_time_features(df)
-    df = df[MODEL_FEATURE_COLUMNS]
-    plt.ylabel('Loss (MSE)')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig(PLOT_PATH)
-    print(f"Training loss plot saved to {PLOT_PATH}")
+    if HAS_MATPLOTLIB:
+        plt.figure(figsize=(10, 6))
+        plt.plot(history.history['loss'], label='Training Loss')
+        if 'val_loss' in history.history:
+            plt.plot(history.history['val_loss'], label='Validation Loss')
+        plt.title('Model Loss during Training')
+        plt.ylabel('Loss (MSE)')
+        plt.xlabel('Epoch')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(PLOT_PATH)
+        print(f"Training loss plot saved to {PLOT_PATH}")
 
-    print("Plotting daily average of training data...")
-    df_daily_avg = df_clean.resample('D').mean()
-
-    plt.figure(figsize=(12, 8))
-    for column in df_daily_avg.columns:
-        plt.plot(df_daily_avg.index, df_daily_avg[column], label=column.replace('_watts', '').replace('_', ' ').title())
-
-    plt.title('Average Daily Energy Consumption (Training Data)')
-    plt.xlabel('Time in days')
-    plt.ylabel('Average Daily Wattage')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(DATA_PLOT_PATH)
-    print(f"Training data plot saved to {DATA_PLOT_PATH}")
+        print("Plotting daily average of training data...")
+        df_daily_avg = df_clean.resample('D').mean()
+        plt.figure(figsize=(12, 8))
+        for column in df_daily_avg.columns:
+            plt.plot(df_daily_avg.index, df_daily_avg[column], label=column.replace('_watts', '').replace('_', ' ').title())
+        plt.title('Average Daily Energy Consumption (Training Data)')
+        plt.xlabel('Time in days')
+        plt.ylabel('Average Daily Wattage')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(DATA_PLOT_PATH)
+        print(f"Training data plot saved to {DATA_PLOT_PATH}")
 
 if __name__ == "__main__":
     train_model()

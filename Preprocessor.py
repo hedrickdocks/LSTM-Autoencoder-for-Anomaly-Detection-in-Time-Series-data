@@ -24,25 +24,17 @@ CYCLICAL_FEATURE_COLUMNS = [
 MODEL_FEATURE_COLUMNS = TELEMETRY_FEATURE_COLUMNS + CYCLICAL_FEATURE_COLUMNS
 
 class Preprocessor:
-    """
-    Preprocessor for Autoencoder Anomaly Detection.
-    Handles data cleaning, normalization, and sequence generation.
-    """
+    """Preprocessor for Autoencoder Anomaly Detection."""
     def __init__(self, feature_range=(0, 1)):
         self.scaler = MinMaxScaler(feature_range=feature_range)
         self.is_fitted = False
 
     def load_data(self, filepath):
-        """
-        Loads data from a CSV file.
-        Assumes the first column is datetime or index.
-        """
+        """Loads data from a CSV file."""
         return pd.read_csv(filepath, parse_dates=True, index_col=0)
 
     def clean_data(self, df):
-        """
-        Handles missing values using linear interpolation and forward/backward filling.
-        """
+        """Handles missing values using linear interpolation and forward/backward filling."""
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Input must be a pandas DataFrame.")
 
@@ -89,25 +81,19 @@ class Preprocessor:
         return result
 
     def fit_transform(self, data):
-        """
-        Fits the scaler to the data and returns normalized data.
-        """
+        """Fits the scaler to the data and returns normalized data."""
         transformed_data = self.scaler.fit_transform(data)
         self.is_fitted = True
         return transformed_data
 
     def transform(self, data):
-        """
-        Normalizes data using the fitted scaler.
-        """
+        """Normalizes data using the fitted scaler."""
         if not self.is_fitted:
             raise RuntimeError("Scaler has not been fitted. Call fit_transform first.")
         return self.scaler.transform(data)
 
     def inverse_transform(self, data):
-        """
-        Reverses normalization to get original values.
-        """
+        """Reverses normalization to get original values."""
         if not self.is_fitted:
             raise RuntimeError("Scaler has not been fitted.")
         return self.scaler.inverse_transform(data)
@@ -126,7 +112,6 @@ class Preprocessor:
         if isinstance(data, pd.DataFrame):
             data = data.values
 
-        # Optimization: Use stride_tricks for O(1) memory view creation
         data = np.ascontiguousarray(data)
         n_samples, n_features = data.shape
 
@@ -141,20 +126,16 @@ class Preprocessor:
 
     def create_sequences_gap_aware(self, data, timestamps=None, time_steps=24, max_gap_seconds=15):
         """
-        Generates sliding window sequences without bridging across time gaps larger than max_gap_seconds.
-        Guarantees temporal continuity within each sequence.
+        Generates sliding window sequences without bridging across time gaps.
 
         Args:
-            data (np.ndarray or pd.DataFrame): Normalized feature matrix (samples, features) or DataFrame.
-            timestamps (pd.DatetimeIndex or pd.Series or iterable, optional): Timestamps corresponding to rows.
-                If data is a pd.DataFrame with DatetimeIndex or 'datetime' column, timestamps can be omitted.
+            data (np.ndarray or pd.DataFrame): Normalized feature matrix or DataFrame.
+            timestamps: Timestamps corresponding to rows. Auto-detected from DataFrame index if omitted.
             time_steps (int): Length of the input sequence (lookback).
-            max_gap_seconds (float): Max allowed gap between consecutive samples (default: 15s for 5s sampling).
+            max_gap_seconds (float): Max allowed gap between consecutive samples.
 
         Returns:
             tuple: (sequences_array, target_timestamps_list)
-                - sequences_array: np.ndarray of shape (num_valid_sequences, time_steps, n_features).
-                - target_timestamps_list: list of timestamps at the final timestep of each sequence.
         """
         if isinstance(data, pd.DataFrame):
             if timestamps is None:
@@ -180,7 +161,6 @@ class Preprocessor:
             return np.empty((0, time_steps, n_features)), []
 
         time_diffs = timestamps.diff().dt.total_seconds().fillna(0)
-
         is_break = (time_diffs > max_gap_seconds) | (time_diffs < 0)
         segment_ids = is_break.cumsum()
 
@@ -209,9 +189,9 @@ class Preprocessor:
 
         Args:
             errors (np.ndarray or list): 1D array of reconstruction errors on normal baseline data.
-            point_sigma (float): Multiplier of standard deviation for Point Anomaly threshold (default: 3.0).
-            collective_sigma (float): Multiplier of standard deviation for Collective Anomaly threshold (default: 1.5).
-            collective_window (int): Rolling window size for collective anomaly tracking (default: 12 steps = 60s for 5s sampling).
+            point_sigma (float): Multiplier of standard deviation for Point Anomaly threshold.
+            collective_sigma (float): Multiplier of standard deviation for Collective Anomaly threshold.
+            collective_window (int): Rolling window size for collective anomaly tracking.
 
         Returns:
             dict: Threshold calibration parameters.
@@ -220,12 +200,9 @@ class Preprocessor:
         mean_err = float(np.mean(arr))
         std_err = float(np.std(arr))
 
-        point_thresh = float(mean_err + point_sigma * std_err)
-        collective_thresh = float(mean_err + collective_sigma * std_err)
-
         return {
-            'point_threshold': point_thresh,
-            'collective_threshold': collective_thresh,
+            'point_threshold': float(mean_err + point_sigma * std_err),
+            'collective_threshold': float(mean_err + collective_sigma * std_err),
             'point_sigma': point_sigma,
             'collective_sigma': collective_sigma,
             'mean_error': mean_err,
@@ -239,7 +216,7 @@ class Preprocessor:
         Classifies sequence errors into Point Anomalies and Collective Anomalies.
 
         Args:
-            errors (np.ndarray or list or pd.Series): Reconstruction error per sequence (evaluated at last timestep).
+            errors: Reconstruction error per sequence.
             point_threshold (float): Threshold for immediate point spikes.
             collective_threshold (float): Threshold for sustained collective deviations.
             collective_window (int): Number of consecutive steps to assess collective patterns.
@@ -270,10 +247,9 @@ class Preprocessor:
         }
 
 if __name__ == "__main__":
-    # Quick test of the pipeline
-    dates = pd.date_range(start='2023-01-01', periods=100, freq='H')
+    dates = pd.date_range(start='2023-01-01', periods=100, freq='h')
     values = np.random.rand(100, 1) * 100
-    values[10:15] = np.nan # Simulate missing data
+    values[10:15] = np.nan
 
     df = pd.DataFrame(values, columns=['energy'], index=dates)
 
