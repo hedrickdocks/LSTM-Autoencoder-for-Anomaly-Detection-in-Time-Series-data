@@ -1,0 +1,51 @@
+--- Starting Evaluation (load=fan) ---
+Loaded thresholds: Point=0.04, Collective=0.013999999999999999
+
+=== Ceiling Fan (4-Fan) Evaluation Suite ===
+[PASS] 1. Morning 1 fan Stage 1 (~40W, PF=0.95)         | anom=0/57 | max_mse=0.00026
+[PASS] 2. Morning 2 fans Stage 1 (~81W, PF=0.98)        | anom=0/57 | max_mse=0.00023
+[PASS] 3. Morning 4 fans Stage 3 (~192W, PF=0.995)      | anom=0/57 | max_mse=0.00137
+[PASS] 4. Evening 3 fans Stage 3 (~142W, PF=1.00)       | anom=0/57 | max_mse=0.00071
+[PASS] 5. Scheduled OFF (0W, PF=0.000, I~0.025A)        | anom=0/57 | max_mse=0.00015
+[PASS] 6a. Turn-on transition (OFF -> 3 fans Stg 3)     | point=0, total_anom=0/77 | max_mse=0.00271
+[PASS] 6b. Speed step & turn-off transition             | point=0, total_anom=0/83 | max_mse=0.00223
+[PASS] 7a. Electrical point spike (350W surge)          | point=1 | max_mse=0.17072
+[PASS] 7b. Electrical point spike (185V voltage sag)    | point=1 | max_mse=0.41629
+[PASS] 8a. Off-schedule ON (Mon 23:00 MNL, ~81W)        | collective=44/47 | max_roll=0.02800
+[PASS] 8b. Off-schedule ON (Sun 14:00 MNL, ~190W)       | collective=44/47 | max_roll=0.02800
+
+Fan Scenario Summary: 11/11 passed.
+Loading evaluation dataset from: C:\Users\HEDRICK\Downloads\edr-dashboard\backend\test_data.db
+Injecting synthetic point spikes at indices [40, 120, 240]...
+
+--- Point Anomaly Metrics (Last-Step MSE > Point Threshold) ---
+              precision    recall  f1-score   support
+
+      Normal       1.00      0.99      1.00       974
+     Anomaly       0.30      1.00      0.46         3
+
+    accuracy                           0.99       977
+   macro avg       0.65      1.00      0.73       977
+weighted avg       1.00      0.99      0.99       977
+
+Confusion Matrix:
+ [[967   7]
+ [  0   3]]
+Identified Point: 10, Collective: 0
+
+=== Fault Separation Benchmark (3 fans Stg 3 steady baseline ~142W, 225.5V, PF=0.99) ===
+  Normal steady 3 fans Stg 3 (~142W)     | point_mse=0.00075 | ratio= 0.02x | point_flags=0 | Normal
+  Normal 4 fans Stg 3 (~192W)            | point_mse=0.00042 | ratio= 0.01x | point_flags=0 | Normal
+  250W overload spike                    | point_mse=0.03748 | ratio= 0.94x | point_flags=0 | Normal
+  PF=0.45 faulty run-capacitor (142W)    | point_mse=0.09905 | ratio= 2.48x | point_flags=1 | Point Anomaly
+  200V undervoltage sag                  | point_mse=0.16389 | ratio= 4.10x | point_flags=1 | Point Anomaly
+  258V overvoltage swell                 | point_mse=0.26516 | ratio= 6.63x | point_flags=1 | Point Anomaly
+  350W locked-rotor surge                | point_mse=0.16929 | ratio= 4.23x | point_flags=1 | Point Anomaly
+  185V severe voltage sag                | point_mse=0.41676 | ratio=10.42x | point_flags=1 | Point Anomaly
+  450W motor short/surge                 | point_mse=0.41056 | ratio=10.26x | point_flags=1 | Point Anomaly
+
+=== Real Hardware Replay (backend/local.db, 542 rows) ===
+  1. Shifted (-6h -> Tue 14:14-15:05 MNL scheduled ON): sequences=473, Normal=471, Point=1, Collective=1, max_mse=0.12673, median_mse=0.00041, max_roll=0.01405
+     flagged idx=370, ts=2026-11-24 15:00:50+08:00, mse=0.12673, roll=0.00096, pt=True, coll=False
+     flagged idx=382, ts=2026-11-24 15:01:54+08:00, mse=0.02189, roll=0.01405, pt=False, coll=True
+  2. Actual (Tue 20:14-21:05 MNL spanning 21:00 boundary): sequences=473, Normal=51, Point=5, Collective=417, max_mse=0.15609, median_mse=0.00033, max_roll=0.02934

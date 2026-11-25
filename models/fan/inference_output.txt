@@ -1,0 +1,11 @@
+--- Inference Summary (load=fan) ---
+Input File: ai-service\datasets\fan\Monday_dataset.csv
+Input Rows: 17280
+Total Sequences Scored: 17257
+Point Threshold: 0.04000
+Collective Threshold: 0.01400 (window=12)
+Point MSE -> min=0.000007, median=0.000577, p99=0.008857, max=0.021462
+Rolling Error -> min=0.000000, median=0.000853, max=0.010468
+Point Anomalies: 0
+Collective Anomalies: 0
+Total Anomalous Timestamps: 0

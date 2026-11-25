@@ -9,9 +9,7 @@ __pycache__/
 htmlcov/
 
 # model checkpoints
-*.h5
 *.keras
-*.pkl
 *.pickle
 *.joblib
 checkpoints/
@@ -26,7 +24,6 @@ checkpoints/
 *.db
 *.sqlite
 *.sqlite3
-*.csv
 
 .vscode/
 .idea/
